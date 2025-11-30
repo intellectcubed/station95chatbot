@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
 
     # Calendar Service Configuration
-    calendar_service_url: str = "http://localhost:8000/commands"
+    calendar_service_url: str = "https://dyumfg6b2e.execute-api.us-east-1.amazonaws.com/v1"
 
     # Bot Configuration
     webhook_port: int = 8080

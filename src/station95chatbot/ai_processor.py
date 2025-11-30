@@ -50,8 +50,11 @@ class AIProcessor:
         message_timestamp: int,
     ) -> str:
         """Build the AI prompt for message interpretation."""
-        current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        message_time = datetime.fromtimestamp(message_timestamp).strftime("%Y-%m-%d %H:%M:%S")
+        # Use message timestamp as "current date" for consistent interpretation
+        # This ensures "tonight", "tomorrow", etc. are relative to when message was sent
+        message_time = datetime.fromtimestamp(message_timestamp)
+        current_date = message_time.strftime("%Y-%m-%d %H:%M:%S")
+        message_time_str = message_time.strftime("%Y-%m-%d %H:%M:%S")
 
         return f"""You are a rescue squad shift management assistant. Analyze the following GroupMe message and extract shift change information.
 
@@ -60,8 +63,8 @@ class AIProcessor:
 - Sender's Squad: {sender_squad if sender_squad else "Unknown"}
 - Sender's Role: {sender_role if sender_role else "Unknown"}
 - Message: "{message_text}"
-- Timestamp: {message_time}
-- Current Date: {current_date}
+- Message Sent At: {message_time_str}
+- Current Date/Time (use this as "now"): {current_date}
 
 **Your Task:**
 Extract and return a JSON object with the following structure:
@@ -175,6 +178,8 @@ Respond ONLY with valid JSON. Do not include any explanation outside the JSON st
         prompt = self._build_prompt(
             sender_name, sender_squad, sender_role, message_text, message_timestamp
         )
+
+        # print(f'Prompt: {prompt}')
 
         logger.info(f"Interpreting message from {sender_name}: {message_text[:50]}...")
 

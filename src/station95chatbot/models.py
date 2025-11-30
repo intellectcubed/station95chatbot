@@ -27,6 +27,7 @@ class CalendarCommand(BaseModel):
     shift_start: str = Field(pattern=r"^\d{4}$", description="Start time in HHMM format")
     shift_end: str = Field(pattern=r"^\d{4}$", description="End time in HHMM format")
     squad: Literal[34, 35, 42, 43, 54]
+    preview: bool = False  # Preview mode flag
 
     def to_query_params(self) -> dict[str, str]:
         """Convert to query parameters for HTTP request."""
@@ -36,6 +37,7 @@ class CalendarCommand(BaseModel):
             "shift_start": self.shift_start,
             "shift_end": self.shift_end,
             "squad": str(self.squad),
+            "preview": str(self.preview),
         }
 
 
@@ -48,3 +50,4 @@ class GroupMeMessage(BaseModel):
     group_id: str
     message_id: str
     sender_id: str
+    preview: bool = False  # Preview mode flag from webhook

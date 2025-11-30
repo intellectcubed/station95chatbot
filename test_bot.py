@@ -43,10 +43,16 @@ TEST_MESSAGES = [
         "sender": "Mike Halperin",
         "text": "Still no luck getting a crew until midnight. Fully staffed after midnight",
         "description": "Complex message - two shifts"
+    },
+    {
+        "sender": "George Nowakowski",
+        "text": "43 does not have a crew on March 15th from 1800 to midnight",
+        "description": "Preview mode test (should send preview=True)",
+        "preview": True  # Test preview mode
     }
 ]
 
-def create_webhook_payload(sender_name, text):
+def create_webhook_payload(sender_name, text, preview=False):
     """Create a mock GroupMe webhook payload."""
     return {
         "attachments": [],
@@ -59,18 +65,20 @@ def create_webhook_payload(sender_name, text):
         "sender_type": "user",
         "system": False,
         "text": text,
-        "user_id": str(hash(sender_name) % 100000)
+        "user_id": str(hash(sender_name) % 100000),
+        "preview": preview  # Add preview flag
     }
 
-def test_webhook(sender, text, description):
+def test_webhook(sender, text, description, preview=False):
     """Send a test webhook to the bot."""
     print(f"\n{'='*80}")
     print(f"TEST: {description}")
     print(f"Sender: {sender}")
     print(f"Message: {text}")
+    print(f"Preview: {preview}")
     print(f"{'='*80}")
 
-    payload = create_webhook_payload(sender, text)
+    payload = create_webhook_payload(sender, text, preview)
 
     try:
         response = requests.post(
@@ -100,7 +108,9 @@ def main():
 
     # Run tests
     for test in TEST_MESSAGES:
-        test_webhook(test["sender"], test["text"], test["description"])
+        # Get preview flag from test, default to False
+        preview = test.get("preview", False)
+        test_webhook(test["sender"], test["text"], test["description"], preview)
         time.sleep(2)  # Wait between tests
 
     print(f"\n{'='*80}")

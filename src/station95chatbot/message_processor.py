@@ -54,6 +54,7 @@ class MessageProcessor:
             "friday",
             "staffed",
             "no crew",
+            "covering",
         ]
 
         message_lower = message.message_text.lower()
@@ -61,9 +62,63 @@ class MessageProcessor:
 
         if not has_keywords:
             logger.debug(f"Message doesn't contain shift keywords: {message.message_text[:50]}...")
+            # Secondary check: ask AI if this might still be a shift request
+            if self._ai_keyword_check(message.message_text):
+                logger.info(f"AI detected potential shift request despite no keywords")
+                return True
             return False
 
         return True
+
+    def _ai_keyword_check(self, message_text: str) -> bool:
+        """
+        Use AI to determine if a message without keywords might still be a shift request.
+
+        Returns True if AI thinks this could be a shift request.
+        """
+        try:
+            # Only do AI check if using OpenAI provider
+            if settings.ai_provider != "openai":
+                logger.debug("Skipping AI keyword check (not using OpenAI)")
+                return False
+
+            import openai
+
+            client = openai.OpenAI(api_key=settings.openai_api_key)
+
+            prompt = f"""You are analyzing messages for a rescue squad shift management system.
+
+Context: This is a rescue squad calendar system where chiefs and members coordinate crew availability for shifts. Squads (34, 35, 42, 43, 54) need to staff 12-hour shifts (typically 0600-1800 or 1800-0600).
+
+Message: "{message_text}"
+
+Question: Does this message seem like a request to add, remove, or modify crew availability for a shift? This could include:
+- Reporting that a crew is unavailable
+- Confirming crew availability
+- Requesting coverage
+- Canceling or modifying a scheduled shift
+- Any scheduling or staffing issue related to rescue squad shifts
+
+Answer with ONLY "yes" or "no" (lowercase)."""
+
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a precise classifier. Answer only 'yes' or 'no'."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1,
+                max_tokens=10
+            )
+
+            answer = response.choices[0].message.content.strip().lower()
+            logger.debug(f"AI keyword check for '{message_text[:50]}...': {answer}")
+
+            return answer == "yes"
+
+        except Exception as e:
+            logger.warning(f"AI keyword check failed: {e}, defaulting to False")
+            return False
 
     def process_message(self, message: GroupMeMessage) -> dict:
         """
@@ -146,6 +201,7 @@ class MessageProcessor:
                 date=interpretation.date,
                 shift_start=interpretation.shift_start,
                 shift_end=interpretation.shift_end,
+                preview=message.preview,  # Pass through preview flag
             )
 
             logger.info(f"Executing command: {command.model_dump()}")
@@ -177,8 +233,15 @@ class MessageProcessor:
     ) -> None:
         """Log message processing details to a file for review and improvement."""
         import json
+        import os
         from pathlib import Path
 
+        # Skip file logging in Lambda - use CloudWatch instead
+        if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+            logger.debug("Skipping file logging in Lambda (logs go to CloudWatch)")
+            return
+
+        # For local/non-Lambda environments, write to logs directory
         log_dir = Path("logs")
         log_dir.mkdir(exist_ok=True)
 

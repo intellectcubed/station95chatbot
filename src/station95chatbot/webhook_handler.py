@@ -89,6 +89,7 @@ class WebhookHandler:
                 group_id=data.get("group_id", ""),
                 message_id=data.get("id", ""),
                 sender_id=data.get("sender_id", ""),
+                preview=data.get("preview", False),  # Extract preview flag
             )
         except Exception as e:
             logger.error(f"Error parsing webhook data: {e}")

@@ -1,6 +1,7 @@
 """Client for interacting with the calendar service."""
 
 import logging
+import os
 import requests
 from typing import Any
 
@@ -32,20 +33,26 @@ class CalendarClient:
             requests.RequestException: If the request fails
         """
         params = command.to_query_params()
-        params["preview"] = "False"  # Add preview parameter
 
         logger.info(
             f"Sending command to calendar service: {command.action} "
             f"for squad {command.squad} on {command.date} "
-            f"({command.shift_start}-{command.shift_end})"
+            f"({command.shift_start}-{command.shift_end}) [preview={command.preview}]"
         )
 
         try:
-            response = requests.get(
-                self.base_url,
-                params=params,
-                timeout=10,
-            )
+            # Check if running in Lambda and need to sign requests with IAM
+            if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+                logger.debug("Using IAM authentication for calendar service")
+                response = self._send_with_iam_auth(self.base_url, params)
+            else:
+                # Local development - no IAM signing
+                logger.debug("Using plain HTTP request (no IAM auth)")
+                response = requests.get(
+                    self.base_url,
+                    params=params,
+                    timeout=10,
+                )
 
             response.raise_for_status()
 
@@ -60,6 +67,41 @@ class CalendarClient:
         except requests.RequestException as e:
             logger.error(f"Error sending command to calendar service: {e}")
             raise
+
+    def _send_with_iam_auth(self, url: str, params: dict) -> requests.Response:
+        """
+        Send a request with AWS IAM authentication (SigV4).
+
+        Args:
+            url: The URL to send the request to
+            params: Query parameters
+
+        Returns:
+            Response object
+        """
+        from requests_aws4auth import AWS4Auth
+        import boto3
+
+        # Get AWS credentials from the Lambda execution environment
+        session = boto3.Session()
+        credentials = session.get_credentials()
+
+        # Parse region from URL (e.g., us-east-1 from execute-api.us-east-1.amazonaws.com)
+        import re
+        region_match = re.search(r'\.([a-z]{2}-[a-z]+-\d)\.amazonaws\.com', url)
+        region = region_match.group(1) if region_match else os.environ.get('AWS_REGION', 'us-east-1')
+
+        # Create SigV4 auth
+        auth = AWS4Auth(
+            credentials.access_key,
+            credentials.secret_key,
+            region,
+            'execute-api',
+            session_token=credentials.token
+        )
+
+        # Send signed request
+        return requests.get(url, params=params, auth=auth, timeout=10)
 
     def send_command_with_retry(
         self, command: CalendarCommand, max_retries: int = 3
