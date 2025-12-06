@@ -1,4 +1,6 @@
 # Python
+.aws-sam/cache/
+
 __pycache__/
 *.py[cod]
 *$py.class

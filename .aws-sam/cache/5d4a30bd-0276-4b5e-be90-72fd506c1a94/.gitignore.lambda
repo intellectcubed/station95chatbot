@@ -1,9 +1,0 @@
-# Lambda deployment artifacts
-lambda-deployment-package.zip
-lambda-package/
-cloudformation-template-updated.yaml
-.aws-sam/
-
-# SAM build artifacts
-.aws-sam/
-samconfig.toml.bak
