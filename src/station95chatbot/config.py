@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     # AI/LLM Configuration
     ai_provider: Literal["openai", "anthropic"] = "openai"
+    ai_mode: Literal["simple", "agentic"] = "simple"  # simple = single LLM call, agentic = multi-step workflow
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
 

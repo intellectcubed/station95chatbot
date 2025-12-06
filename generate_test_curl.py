@@ -3,7 +3,7 @@
 
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Load environment variables from .env file
@@ -62,23 +62,23 @@ def select_member(roster: dict) -> tuple[str, dict]:
 def get_timestamp() -> int:
     """Get timestamp from user or use current time."""
     print("\n=== Message Timestamp ===")
-    print("1. Use current time")
-    print("2. Enter custom date/time")
-    print("3. Enter relative time (e.g., -2h for 2 hours ago)")
+    print("1. Use current UTC time")
+    print("2. Enter custom date/time (UTC)")
+    print("3. Enter relative time (e.g., -2h for 2 hours ago, relative to UTC)")
 
     while True:
         choice = input("\nSelect option (1-3): ").strip()
 
         if choice == "1":
-            return int(datetime.now().timestamp())
+            return int(datetime.now(timezone.utc).timestamp())
 
         elif choice == "2":
-            print("\nEnter date and time:")
-            date_str = input("  Date (YYYY-MM-DD) [today]: ").strip()
-            time_str = input("  Time (HH:MM) [now]: ").strip()
+            print("\nEnter date and time (UTC):")
+            date_str = input("  Date (YYYY-MM-DD) [today UTC]: ").strip()
+            time_str = input("  Time (HH:MM) [now UTC]: ").strip()
 
             try:
-                now = datetime.now()
+                now = datetime.now(timezone.utc)
 
                 # Parse date
                 if date_str:
@@ -97,7 +97,7 @@ def get_timestamp() -> int:
                 else:
                     hour, minute = now.hour, now.minute
 
-                dt = datetime(year, month, day, hour, minute)
+                dt = datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
                 return int(dt.timestamp())
 
             except (ValueError, IndexError) as e:
@@ -118,7 +118,7 @@ def get_timestamp() -> int:
                 amount = int(match.group(2))
                 unit = match.group(3)
 
-                now = datetime.now()
+                now = datetime.now(timezone.utc)
 
                 if unit == 'h':
                     from datetime import timedelta
@@ -249,7 +249,7 @@ def main():
 
     # Get timestamp
     timestamp = get_timestamp()
-    timestamp_str = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+    timestamp_str = datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     print(f"\nTimestamp: {timestamp_str} ({timestamp})")
 
     # Get message text

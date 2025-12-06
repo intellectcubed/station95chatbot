@@ -22,6 +22,15 @@ class MessageProcessor:
         self.calendar_client = calendar_client
         self.confidence_threshold = settings.confidence_threshold
 
+        # Initialize agentic processor if needed
+        self.agentic_processor = None
+        if settings.ai_mode == "agentic":
+            from .agentic_processor import AgenticProcessor
+            self.agentic_processor = AgenticProcessor()
+            logger.info("Initialized in AGENTIC mode (multi-step workflow)")
+        else:
+            logger.info("Initialized in SIMPLE mode (single LLM call)")
+
     def should_process_message(self, message: GroupMeMessage) -> bool:
         """
         Determine if a message should be processed.
@@ -100,6 +109,10 @@ Question: Does this message seem like a request to add, remove, or modify crew a
 - Any scheduling or staffing issue related to rescue squad shifts
 
 Answer with ONLY "yes" or "no" (lowercase)."""
+            
+            print('*'*50)
+            logger.info(f'Checking with AI to determine if its a shift request Prompt: ')
+            logger.info(prompt)
 
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -113,6 +126,9 @@ Answer with ONLY "yes" or "no" (lowercase)."""
 
             answer = response.choices[0].message.content.strip().lower()
             logger.debug(f"AI keyword check for '{message_text[:50]}...': {answer}")
+            print(f"AI keyword check for '{message_text[:50]}...': {answer}")
+            print('*'*50)
+
 
             return answer == "yes"
 
@@ -150,73 +166,11 @@ Answer with ONLY "yes" or "no" (lowercase)."""
             sender_squad = self.roster.get_member_squad(message.sender_name)
             sender_role = self.roster.get_member_role(message.sender_name)
 
-            # Interpret the message using AI
-            interpretation = self.ai_processor.interpret_message(
-                sender_name=message.sender_name,
-                sender_squad=sender_squad,
-                sender_role=sender_role,
-                message_text=message.message_text,
-                message_timestamp=message.timestamp,
-            )
-
-            result["interpretation"] = interpretation.model_dump()
-
-            # Check if it's a shift request
-            if not interpretation.is_shift_request:
-                result["reason"] = "Not a shift request"
-                self._log_to_file(message, interpretation, result)
-                return result
-
-            # Check confidence threshold
-            if interpretation.confidence < self.confidence_threshold:
-                result["reason"] = (
-                    f"Low confidence ({interpretation.confidence} < "
-                    f"{self.confidence_threshold})"
-                )
-                logger.warning(
-                    f"Low confidence interpretation: {interpretation.confidence}%. "
-                    f"Flagging for manual review."
-                )
-                self._log_to_file(message, interpretation, result)
-                return result
-
-            # Validate that we have all required fields
-            if not all(
-                [
-                    interpretation.action,
-                    interpretation.squad,
-                    interpretation.date,
-                    interpretation.shift_start,
-                    interpretation.shift_end,
-                ]
-            ):
-                result["reason"] = "Missing required fields in interpretation"
-                self._log_to_file(message, interpretation, result)
-                return result
-
-            # Create and send calendar command
-            command = CalendarCommand(
-                action=interpretation.action,
-                squad=interpretation.squad,
-                date=interpretation.date,
-                shift_start=interpretation.shift_start,
-                shift_end=interpretation.shift_end,
-                preview=message.preview,  # Pass through preview flag
-            )
-
-            logger.info(f"Executing command: {command.model_dump()}")
-            response = self.calendar_client.send_command_with_retry(command)
-
-            result["processed"] = True
-            result["command_sent"] = True
-            result["calendar_response"] = response
-            result["reason"] = "Successfully processed and command sent"
-
-            self._log_to_file(message, interpretation, result)
-
-            logger.info(f"Successfully processed message {message.message_id}")
-
-            return result
+            # Route to appropriate processor based on mode
+            if settings.ai_mode == "agentic" and self.agentic_processor:
+                return self._process_agentic(message, sender_squad, sender_role, result)
+            else:
+                return self._process_simple(message, sender_squad, sender_role, result)
 
         except Exception as e:
             logger.error(f"Error processing message: {e}", exc_info=True)
@@ -224,6 +178,155 @@ Answer with ONLY "yes" or "no" (lowercase)."""
             result["reason"] = f"Error: {str(e)}"
             self._log_to_file(message, None, result)
             return result
+
+    def _process_simple(
+        self,
+        message: GroupMeMessage,
+        sender_squad: int | None,
+        sender_role: str | None,
+        result: dict
+    ) -> dict:
+        """
+        Process a message using the simple (single LLM call) approach.
+
+        This is the original implementation.
+        """
+        # Interpret the message using AI
+        interpretation = self.ai_processor.interpret_message(
+            sender_name=message.sender_name,
+            sender_squad=sender_squad,
+            sender_role=sender_role,
+            message_text=message.message_text,
+            message_timestamp=message.timestamp,
+        )
+
+        result["interpretation"] = interpretation.model_dump()
+
+        # Check if it's a shift request
+        if not interpretation.is_shift_request:
+            result["reason"] = "Not a shift request"
+            self._log_to_file(message, interpretation, result)
+            return result
+
+        # Check confidence threshold
+        if interpretation.confidence < self.confidence_threshold:
+            result["reason"] = (
+                f"Low confidence ({interpretation.confidence} < "
+                f"{self.confidence_threshold})"
+            )
+            logger.warning(
+                f"Low confidence interpretation: {interpretation.confidence}%. "
+                f"Flagging for manual review."
+            )
+            self._log_to_file(message, interpretation, result)
+            return result
+
+        # Validate that we have all required fields
+        if not all(
+            [
+                interpretation.action,
+                interpretation.squad,
+                interpretation.date,
+                interpretation.shift_start,
+                interpretation.shift_end,
+            ]
+        ):
+            result["reason"] = "Missing required fields in interpretation"
+            self._log_to_file(message, interpretation, result)
+            return result
+
+        # Create and send calendar command
+        command = CalendarCommand(
+            action=interpretation.action,
+            squad=interpretation.squad,
+            date=interpretation.date,
+            shift_start=interpretation.shift_start,
+            shift_end=interpretation.shift_end,
+            preview=message.preview,  # Pass through preview flag
+        )
+
+        logger.info(f"Executing command: {command.model_dump()}")
+        response = self.calendar_client.send_command_with_retry(command)
+
+        result["processed"] = True
+        result["command_sent"] = True
+        result["calendar_response"] = response
+        result["reason"] = "Successfully processed and command sent"
+
+        self._log_to_file(message, interpretation, result)
+
+        logger.info(f"Successfully processed message {message.message_id}")
+
+        return result
+
+    def _process_agentic(
+        self,
+        message: GroupMeMessage,
+        sender_squad: int | None,
+        sender_role: str | None,
+        result: dict
+    ) -> dict:
+        """
+        Process a message using the agentic (multi-step workflow) approach.
+
+        This uses LangGraph to orchestrate complex multi-step workflows.
+        """
+        logger.info(f"Using AGENTIC processing for message: {message.message_text[:50]}...")
+
+        # Call the agentic processor
+        agentic_result = self.agentic_processor.process_message(
+            message_text=message.message_text,
+            sender_name=message.sender_name,
+            sender_squad=sender_squad,
+            sender_role=sender_role,
+            message_timestamp=message.timestamp
+        )
+
+        # Map agentic result to standard result format
+        result["interpretation"] = {
+            "is_shift_request": agentic_result.get("is_shift_request", False),
+            "confidence": agentic_result.get("confidence", 0),
+            "parsed_requests": agentic_result.get("parsed_requests", []),
+            "warnings": agentic_result.get("warnings", []),
+            "critical_warnings": agentic_result.get("critical_warnings", []),
+        }
+
+        # Check if it's a shift request
+        if not agentic_result.get("is_shift_request", False):
+            result["reason"] = "Not a shift request"
+            self._log_to_file(message, None, result)
+            return result
+
+        # Check confidence threshold
+        if agentic_result.get("confidence", 0) < self.confidence_threshold:
+            result["reason"] = (
+                f"Low confidence ({agentic_result.get('confidence')} < "
+                f"{self.confidence_threshold})"
+            )
+            logger.warning(
+                f"Low confidence interpretation: {agentic_result.get('confidence')}%. "
+                f"Flagging for manual review."
+            )
+            self._log_to_file(message, None, result)
+            return result
+
+        # Check execution results
+        execution_results = agentic_result.get("execution_results", [])
+        if execution_results:
+            result["processed"] = True
+            result["command_sent"] = True
+            result["execution_results"] = execution_results
+            result["warnings"] = agentic_result.get("warnings", [])
+            result["critical_warnings"] = agentic_result.get("critical_warnings", [])
+            result["reason"] = f"Successfully processed {len(execution_results)} command(s)"
+
+            logger.info(f"Successfully processed message {message.message_id} with {len(execution_results)} commands")
+        else:
+            result["reason"] = "No commands executed"
+
+        self._log_to_file(message, None, result)
+
+        return result
 
     def _log_to_file(
         self,

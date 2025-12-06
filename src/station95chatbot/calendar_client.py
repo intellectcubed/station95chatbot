@@ -133,3 +133,62 @@ class CalendarClient:
                     raise last_error
 
         raise last_error
+
+    def get_schedule(
+        self, start_date: str, end_date: str, squad: int | None = None
+    ) -> dict[str, Any]:
+        """
+        Fetch the schedule from the calendar service for a date range.
+
+        Args:
+            start_date: Start date in YYYYMMDD format
+            end_date: End date in YYYYMMDD format
+            squad: Optional squad number to filter by
+
+        Returns:
+            Dictionary with schedule data from the calendar service
+
+        Raises:
+            requests.RequestException: If the request fails
+        """
+        params = {
+            "action": "getSchedule",
+            "start_date": start_date,
+            "end_date": end_date,
+        }
+
+        if squad is not None:
+            params["squad"] = str(squad)
+
+        logger.info(
+            f"Fetching schedule: {start_date} to {end_date}"
+            + (f" for squad {squad}" if squad else "")
+        )
+
+        try:
+            # Check if running in Lambda and need to sign requests with IAM
+            if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+                logger.debug("Using IAM authentication for schedule fetch")
+                response = self._send_with_iam_auth(self.base_url, params)
+            else:
+                # Local development - no IAM signing
+                logger.debug("Using plain HTTP request (no IAM auth)")
+                response = requests.get(
+                    self.base_url,
+                    params=params,
+                    timeout=10,
+                )
+
+            response.raise_for_status()
+
+            logger.info(f"Schedule fetched successfully: {response.status_code}")
+
+            # Try to parse JSON response
+            try:
+                return response.json()
+            except ValueError:
+                return {"status": "success", "data": response.text}
+
+        except requests.RequestException as e:
+            logger.error(f"Error fetching schedule from calendar service: {e}")
+            raise
