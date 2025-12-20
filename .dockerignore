@@ -1,0 +1,58 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation
+*.md
+!DOCKER.md
+!POLLING.md
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+
+# Examples
+examples/
+
+# Local data (will be mounted as volumes)
+logs/
+*.log
+
+# AWS
+.aws-sam/
+
+# Environment files (will be passed via docker-compose)
+.env
+.env.*
+!.env.docker.example
+
+# Temporary files
+*.tmp
+*.bak
+.DS_Store

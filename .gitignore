@@ -49,3 +49,4 @@ htmlcov/
 # Data
 data/*.db
 data/*.sqlite
+data/last_message_id.txt
